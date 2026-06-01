@@ -44,12 +44,13 @@ def build_weekend_summary(
         return None
 
     in_window.sort(key=lambda s: s.start_utc)
+    fecha = f"{in_window[0].start_madrid:%d/%m/%Y}"
 
     groups: "OrderedDict[tuple[str, str], list[Session]]" = OrderedDict()
     for session in in_window:
         groups.setdefault((session.sport, session.event), []).append(session)
 
-    lines = ["🏁 <b>Carreras de este fin de semana</b> 🏁", ""]
+    lines = [f"🏁 <b>Carreras de este fin de semana: {fecha}</b> 🏁", ""]
     for (sport, event), group in groups.items():
         icon = _SPORT_ICON.get(sport, "")
         lines.append(f"{icon} <b>{escape(sport)} — {escape(event)}</b>")
