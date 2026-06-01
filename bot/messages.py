@@ -12,6 +12,8 @@ _DAYS_ES = [
     "viernes", "sábado", "domingo",
 ]
 _SPORT_ICON = {"F1": "🏎️", "MotoGP": "🏍️"}
+# Tipos de sesión que se consideran "carrera" (se muestran en negrita).
+_RACE_KINDS = {"race", "support_race", "sprint"}
 
 
 def _fmt_day_time(when: dt.datetime) -> str:
@@ -55,10 +57,10 @@ def build_weekend_summary(
         icon = _SPORT_ICON.get(sport, "")
         lines.append(f"{icon} <b>{escape(sport)} — {escape(event)}</b>")
         for session in group:
-            lines.append(
-                f"   • {escape(session.name)}: "
-                f"{_fmt_day_time(session.start_madrid)}"
-            )
+            texto = f"{escape(session.name)}: {_fmt_day_time(session.start_madrid)}"
+            if session.kind in _RACE_KINDS:
+                texto = f"<b>{texto}</b>"
+            lines.append(f"   • {texto}")
         lines.append("")
 
     lines.append("<i>Horarios en hora de Madrid 🇪🇸</i>")

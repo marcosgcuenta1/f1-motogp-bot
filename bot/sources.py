@@ -131,8 +131,10 @@ _MGP_SESSIONS = {
     "RAC": ("Carrera", "race"),
 }
 
-# Solo la clase reina (MotoGP). MT2 = Moto2, MT3 = Moto3.
+# Clase reina (MotoGP). MT2 = Moto2, MT3 = Moto3.
 _MGP_CATEGORY = "MGP"
+# De Moto2/Moto3 solo nos interesa la carrera (no libres ni clasificación).
+_MGP_SUPPORT = {"MT2": "Moto2", "MT3": "Moto3"}
 
 
 def _fetch_motogp_year(year: int) -> list[Session]:
@@ -154,13 +156,20 @@ def _fetch_motogp_year(year: int) -> list[Session]:
         country = event.get("country", "")
         for broadcast in event.get("broadcasts") or []:
             category = (broadcast.get("category") or {}).get("acronym")
-            if category != _MGP_CATEGORY:
-                continue
             shortname = (broadcast.get("shortname") or "").upper()
-            mapped = _MGP_SESSIONS.get(shortname)
-            if not mapped:  # descarta ruedas de prensa, shows, etc.
+
+            if category == _MGP_CATEGORY:
+                mapped = _MGP_SESSIONS.get(shortname)
+                if not mapped:  # descarta ruedas de prensa, shows, etc.
+                    continue
+                label, kind = mapped
+            elif category in _MGP_SUPPORT and shortname == "RAC":
+                # De Moto2/Moto3 solo la carrera. La marcamos como
+                # 'support_race' para que NO dispare el aviso de 10 min.
+                label, kind = f"Carrera {_MGP_SUPPORT[category]}", "support_race"
+            else:
                 continue
-            label, kind = mapped
+
             start = _parse_iso(broadcast.get("date_start"))
             if start:
                 sessions.append(Session("MotoGP", name, country, label, kind, start))
