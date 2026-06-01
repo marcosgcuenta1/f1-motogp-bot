@@ -1,0 +1,24 @@
+name: Resumen del fin de semana
+
+on:
+  schedule:
+    # Jueves 17:00 UTC = 19:00 en Madrid (verano/CEST) / 18:00 (invierno/CET).
+    # GitHub usa SIEMPRE UTC y no aplica horario de verano.
+    - cron: "0 17 * * 4"
+  workflow_dispatch: {}   # permite lanzarlo a mano desde la pestaña Actions
+
+jobs:
+  resumen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Enviar resumen
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python run_weekend_summary.py
