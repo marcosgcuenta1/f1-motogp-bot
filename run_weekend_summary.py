@@ -23,8 +23,10 @@ def main() -> int:
     start, end = upcoming_weekend(now_madrid)
     years = sorted({start.year, end.year})
 
-    sessions = get_all_sessions(years)
-    message = build_weekend_summary(sessions, start, end)
+    sessions, failed = get_all_sessions(years)
+    if failed:
+        print(f"Aviso: no se pudieron cargar estos deportes: {', '.join(failed)}.")
+    message = build_weekend_summary(sessions, start, end, failed)
 
     if message is None:
         print(f"Sin F1 ni MotoGP entre {start:%Y-%m-%d} y {end:%Y-%m-%d}. No se envía nada.")

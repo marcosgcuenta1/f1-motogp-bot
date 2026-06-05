@@ -38,7 +38,9 @@ def main() -> int:
     now_utc = dt.datetime.now(UTC)
     years = sorted({now_utc.year, (now_utc + dt.timedelta(days=14)).year})
 
-    sessions = get_all_sessions(years)
+    sessions, failed = get_all_sessions(years)
+    if failed:
+        print(f"Aviso: no se pudieron cargar estos deportes: {', '.join(failed)}.")
     alerted = state.load(state_path)
 
     sent = 0

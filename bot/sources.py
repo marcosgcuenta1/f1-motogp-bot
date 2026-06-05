@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import time
 from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
@@ -23,6 +24,32 @@ MOTOGP_EVENTS_URL = "https://api.motogp.pulselive.com/motogp/v1/events"
 
 _TIMEOUT = 30
 _HEADERS = {"User-Agent": "f1-motogp-telegram-bot/1.0 (personal use)"}
+
+# Reintentos ante hipos puntuales de las APIs (sobre todo la no oficial de
+# MotoGP). Sin esto, un fallo transitorio dejaba un deporte fuera del resumen
+# sin que nadie se enterara.
+_RETRIES = 3
+_BACKOFF_S = 2  # espera creciente: 2 s, 4 s entre intentos
+
+
+def _get(url: str, **params) -> requests.Response:
+    """GET con reintentos y backoff. Lanza la última excepción si todos fallan."""
+    last_exc: Exception | None = None
+    for attempt in range(_RETRIES):
+        try:
+            resp = requests.get(
+                url,
+                params=params or None,
+                headers=_HEADERS,
+                timeout=_TIMEOUT,
+            )
+            resp.raise_for_status()
+            return resp
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt < _RETRIES - 1:
+                time.sleep(_BACKOFF_S * (attempt + 1))
+    raise last_exc  # type: ignore[misc]
 
 
 @dataclass(frozen=True)
@@ -89,8 +116,7 @@ _F1_SESSIONS = [
 
 
 def fetch_f1() -> list[Session]:
-    resp = requests.get(F1_URL, headers=_HEADERS, timeout=_TIMEOUT)
-    resp.raise_for_status()
+    resp = _get(F1_URL)
     races = resp.json()["MRData"]["RaceTable"]["Races"]
 
     sessions: list[Session] = []
@@ -138,13 +164,7 @@ _MGP_SUPPORT = {"MT2": "Moto2", "MT3": "Moto3"}
 
 
 def _fetch_motogp_year(year: int) -> list[Session]:
-    resp = requests.get(
-        MOTOGP_EVENTS_URL,
-        params={"seasonYear": year},
-        headers=_HEADERS,
-        timeout=_TIMEOUT,
-    )
-    resp.raise_for_status()
+    resp = _get(MOTOGP_EVENTS_URL, seasonYear=year)
     payload = resp.json()
     events = payload if isinstance(payload, list) else payload.get("events", [])
 
@@ -179,28 +199,34 @@ def _fetch_motogp_year(year: int) -> list[Session]:
 def fetch_motogp(years: list[int]) -> list[Session]:
     sessions: list[Session] = []
     for year in sorted(set(years)):
-        try:
-            sessions.extend(_fetch_motogp_year(year))
-        except requests.RequestException:
-            # No abortamos todo el bot si MotoGP falla un año concreto.
-            continue
+        sessions.extend(_fetch_motogp_year(year))
     return sessions
 
 
 # --------------------------------------------------------------------------- #
 # API combinada
 # --------------------------------------------------------------------------- #
-def get_all_sessions(years: list[int]) -> list[Session]:
-    """Devuelve todas las sesiones de F1 + MotoGP, deduplicadas y ordenadas."""
+def get_all_sessions(years: list[int]) -> tuple[list[Session], list[str]]:
+    """Sesiones de F1 + MotoGP, deduplicadas y ordenadas.
+
+    Devuelve ``(sesiones, deportes_fallidos)``. ``deportes_fallidos`` contiene
+    "F1" y/o "MotoGP" cuando su API no respondió ni tras los reintentos, para
+    que el mensaje pueda avisar de que la información está incompleta en vez de
+    omitir un deporte en silencio (lo que hacía creer que "no había carreras").
+    """
     sessions: list[Session] = []
+    failed: list[str] = []
 
     try:
         sessions.extend(fetch_f1())
     except requests.RequestException:
-        pass
+        failed.append("F1")
 
-    sessions.extend(fetch_motogp(years))
+    try:
+        sessions.extend(fetch_motogp(years))
+    except requests.RequestException:
+        failed.append("MotoGP")
 
     # Deduplicar por uid (varios canales de TV comparten misma sesión/hora).
     unique: dict[str, Session] = {s.uid: s for s in sessions}
-    return sorted(unique.values(), key=lambda s: s.start_utc)
+    return sorted(unique.values(), key=lambda s: s.start_utc), failed

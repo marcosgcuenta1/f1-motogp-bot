@@ -37,16 +37,23 @@ def build_weekend_summary(
     sessions: list[Session],
     start_madrid: dt.datetime,
     end_madrid: dt.datetime,
+    failed: list[str] | None = None,
 ) -> str | None:
-    """Resumen del finde, o ``None`` si no hay ninguna sesión en la ventana."""
+    """Resumen del finde.
+
+    Devuelve ``None`` solo si no hay sesiones en la ventana **y** ninguna API
+    falló. Si un deporte no se pudo cargar (``failed``), se añade un aviso al
+    final para no dar por completo un resumen al que le falta media parrilla.
+    """
+    failed = failed or []
     in_window = [
         s for s in sessions if start_madrid <= s.start_madrid <= end_madrid
     ]
-    if not in_window:
+    if not in_window and not failed:
         return None
 
     in_window.sort(key=lambda s: s.start_utc)
-    fecha = f"{in_window[0].start_madrid:%d/%m/%Y}"
+    fecha = f"{in_window[0].start_madrid:%d/%m/%Y}" if in_window else f"{start_madrid:%d/%m/%Y}"
 
     groups: "OrderedDict[tuple[str, str], list[Session]]" = OrderedDict()
     for session in in_window:
@@ -61,6 +68,16 @@ def build_weekend_summary(
             if session.kind in _RACE_KINDS:
                 texto = f"<b>{texto}</b>"
             lines.append(f"   • {texto}")
+        lines.append("")
+
+    for sport in failed:
+        icon = _SPORT_ICON.get(sport, "⚠️")
+        lines.append(
+            f"⚠️ {icon} No se han podido cargar los horarios de "
+            f"<b>{escape(sport)}</b> (fallo temporal de su API). "
+            f"El resumen puede estar incompleto."
+        )
+    if failed:
         lines.append("")
 
     lines.append("<i>Horarios en hora de Madrid 🇪🇸</i>")
